@@ -1,7 +1,5 @@
-import random
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import matplotlib as plt
@@ -12,16 +10,15 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import SpectralClustering
 import skfuzzy as fuzz
 from sklearn.metrics import silhouette_score
-from scipy.cluster.hierarchy import dendrogram
 from sklearn.metrics.cluster import adjusted_mutual_info_score
 from scipy import stats
 
 
 # Data class represents a base class for each data.
 class Data:
-    NUMBER_OF_SAMPLES = 10000
+    NUMBER_OF_SAMPLES = 11000
 
-    # Constructor Data.
+    # _init_ Data with .
     def __init__(self, csv_name, delimiter):
         # csv name.
         self.csv_name = csv_name
@@ -31,15 +28,17 @@ class Data:
         self.csv = np.genfromtxt(csv_name, delimiter=delimiter,
                                  encoding='utf8', dtype=np.str)
         # change no numbers places in the csv to be numbers.
-        self.update_csv()
+        self._update_csv()
         # hold the data after dimension reduction.
         self.principalDfOriginal = self.dimension_reduction()
+
         self.principalDf = self.get_sample_from_data(0)
-        self.classification = self.get_classification()[self.principalDf.index]
+        # hold the classification column with same index of the sample
+        self.classification = self._get_classification()[self.principalDf.index]
 
         # reduce the dimension of the data to be 2d.
 
-    def get_classification(self):
+    def _get_classification(self):
         pass
 
     def dimension_reduction(self):
@@ -53,7 +52,7 @@ class Data:
         return self.principalDf
 
     # Every data update the csv differently.
-    def update_csv(self):
+    def _update_csv(self):
         pass
 
     def get_titles(self):
@@ -63,7 +62,7 @@ class Data:
         return self.csv[1:]
 
     def get_sample_from_data(self, random_state):
-        return self.principalDfOriginal.sample(n=4000, random_state=random_state)
+        return self.principalDfOriginal.sample(n=self.NUMBER_OF_SAMPLES, random_state=random_state)
 
     def silhouette(self, method, title, plot=True, i=0):
         if i == 0:
@@ -73,7 +72,10 @@ class Data:
         # This list will hold the silhouette scores.
         silhouette_list = []
         # Range of silhouette.
-        r = range(2, 11)
+        if self.csv_name == 'diabetic_data.csv':
+            r = range(9, 25)
+        else:
+            r = range(3, 15)
         for k in r:
             labels = self.cluster_labels(method, k, i)
             silhouette_list.append(silhouette_score(data_for_silhouette, labels))
@@ -175,45 +177,59 @@ class Data:
 
     def get_silhouette_list_kmean(self):
         silhoutte = []
-        for i in range(1, 10):
+
+        for i in range(0, 5):
             silhoutte.append(self.silhouette(self.k_means, "K-MEANS", False))
         return np.transpose(silhoutte)
 
     def get_silhouette_list_gmm(self):
         silhoutte = []
-        for i in range(1, 10):
+        for i in range(0, 5):
             silhoutte.append(self.silhouette(self.gmm, "GMM", False))
         return np.transpose(silhoutte)
 
     def get_silhouette_list_hierarchical(self):
         silhoutte = []
-        for i in range(1, 10):
+        # if self.csv_name == 'diabetic_data.csv':
+        #     r = len(range(10, 25))
+        # else:
+        #     r = len(range(2, 15))
+        for i in range(0, 5):
             silhoutte.append(self.silhouette(self.hierarchical, "hierarchical", False))
         return np.transpose(silhoutte)
 
     def get_silhouette_list_fcm(self):
         silhoutte = []
-        for i in range(1, 10):
+        for i in range(0, 5):
             silhoutte.append(self.silhouette(self.fcm, "FCM", False))
         return np.transpose(silhoutte)
 
     def get_silhouette_list_hierarchical(self):
         silhoutte = []
-        for i in range(1, 10):
+        for i in range(0, 5):
             silhoutte.append(self.silhouette(self.hierarchical, "Hierarchical", False))
         return np.transpose(silhoutte)
 
     def get_silhouette_list_spectral(self):
         silhoutte = []
-        for i in range(1, 10):
+        for i in range(1, 5):
             silhoutte.append(self.silhouette(self.spectral, "Spectral", False))
         return np.transpose(silhoutte)
 
     def t_test_(self, silhouette_list):
         best_cluster = silhouette_list[0]
-        best_number_of_index = 0
+        # In the second data the first sillhoute value is 9 while in the other is 2.
+        if self.csv_name == 'diabetic_data.csv':
+            start = 10
+            best_number_of_clusters = 10
+
+        else:
+            start = 2
+            best_number_of_clusters = 2
+
         sig = 0.05
-        for i in range(1, len(silhouette_list)):
+
+        for i in range(0, len(silhouette_list)):
             t, p = stats.ttest_ind(best_cluster, silhouette_list[i], equal_var=False)
             if np.mean(best_cluster) > np.mean(silhouette_list[i]):
                 p = p / 2
@@ -221,8 +237,8 @@ class Data:
                 p = 1 - p / 2
             if float(p) > sig:
                 best_cluster = silhouette_list[i]
-                best_number_of_index = i
-        return best_number_of_index + 2
+                best_number_of_clusters = i + start
+        return best_number_of_clusters
 
     def get_optimal_number_of_clustering_kmeans(self):
         return self.t_test_(self.get_silhouette_list_kmean())
@@ -240,22 +256,52 @@ class Data:
         return self.t_test_(self.get_silhouette_list_hierarchical())
 
     ######## Mutual Information ###########
-    def ami_kmeans(self):
-        return adjusted_mutual_info_score(self.k_means(self.get_optimal_number_of_clustering_kmeans(), plot=False),
+    def ami_kmeans(self, optimal_number_of_clustering=0):
+        if optimal_number_of_clustering == 0:
+            optimal_number_of_clustering = self.get_optimal_number_of_clustering_kmeans()
+        else:
+            optimal_number_of_clustering = optimal_number_of_clustering
+        return adjusted_mutual_info_score(self.k_means(optimal_number_of_clustering, plot=False),
                                           self.classification)
 
-    def ami_gmm(self):
-        return adjusted_mutual_info_score(self.gmm(self.get_optimal_number_of_clustering_gmm(), plot=False),
+    def ami_gmm(self, optimal_number_of_clustering=0):
+        if optimal_number_of_clustering == 0:
+            optimal_number_of_clustering = self.get_optimal_number_of_clustering_gmm()
+        else:
+            optimal_number_of_clustering = optimal_number_of_clustering
+        return adjusted_mutual_info_score(self.gmm(optimal_number_of_clustering, plot=False),
                                           self.classification)
 
-    def ami_hierarchial(self):
-        return adjusted_mutual_info_score(self.gmm(self.get_optimal_number_of_clustering_hierarchical(), plot=False),
+    def ami_hierarchial(self, optimal_number_of_clustering=0):
+        if optimal_number_of_clustering == 0:
+            optimal_number_of_clustering = self.get_optimal_number_of_clustering_hierarchical()
+        else:
+            optimal_number_of_clustering = optimal_number_of_clustering
+        return adjusted_mutual_info_score(self.gmm(optimal_number_of_clustering, plot=False),
                                           self.classification)
 
-    def ami_fcm(self):
-        return adjusted_mutual_info_score(self.fcm(self.get_optimal_number_of_clustering_fcm(), plot=False),
+    def ami_fcm(self, optimal_number_of_clustering=0):
+        if optimal_number_of_clustering == 0:
+            optimal_number_of_clustering = self.get_optimal_number_of_clustering_fcm()
+        else:
+            optimal_number_of_clustering = optimal_number_of_clustering
+        return adjusted_mutual_info_score(self.fcm(optimal_number_of_clustering, plot=False),
                                           self.classification)
 
-    def ami_sperctral(self):
-        return adjusted_mutual_info_score(self.spectral(self.get_optimal_number_of_clustering_spectral(), plot=False),
+    def ami_spectral(self, optimal_number_of_clustering=0):
+        if optimal_number_of_clustering == 0:
+            optimal_number_of_clustering = self.get_optimal_number_of_clustering_spectral()
+        else:
+            optimal_number_of_clustering = optimal_number_of_clustering
+        return adjusted_mutual_info_score(self.spectral(optimal_number_of_clustering, plot=False),
                                           self.classification)
+
+    def ami_all(self):
+        print("k-means: " + str(self.ami_kmeans()))
+        print("gmm: " + str(self.ami_gmm()))
+        print("spectral: " + str(self.ami_spectral()))
+        print("fcm: " + str(self.ami_fcm()))
+        print("hierarchical: " + str(self.ami_hierarchial()))
+
+    def plot_optimal_clusters(self):
+        pass
